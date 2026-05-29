@@ -40,10 +40,9 @@
             font-family: monospace;
             margin: 5px 0;
         }
-        /* Style for the Run Button */
         #run-btn {
-            background: #00ff00;
-            color: #000;
+            background: #111;
+            color: #00ff00;
             cursor: pointer;
             border: 1px solid #00ff00;
             font-weight: bold;
@@ -53,9 +52,8 @@
             display: inline-block;
         }
         #run-btn:hover {
-            background: #fff;
+            background: #00ff00;
             color: #000;
-            border-color: #fff;
         }
         label { display: inline-block; width: 220px; color: #aaa; }
     </style>
@@ -73,7 +71,7 @@
         <label>Make audio loop? (y/n):</label>
         <select id="loop-opt">
             <option value="y">y</option>
-            <option value="n">n</option>
+            <option value="n" selected>n</option>
         </select><br>
         
         <label>Sample rate? (Hz):</label>
@@ -81,12 +79,12 @@
         
         <label>Format type? (f/m/s):</label>
         <select id="format-opt">
-            <option value="m">mixed - E, \x00</option>
             <option value="f">formatted - \x69, \x00</option>
-            <option value="s">special - E, NUL</option>
+            <option value="m">mixed     - E, \x00</option>
+            <option value="s">special   - E, NUL</option>
         </select><br>
         
-        <button id="run-btn">EXECUTE CONVERSION</button>
+        <button id="run-btn">CONVERT TO BYTEBEAT</button>
     </div>
     
     <hr style="border-color: #333; margin: 20px 0;">
@@ -96,10 +94,19 @@
 </div>
 
 <script>
+// Global Error Catcher - Prints any hidden browser crashes directly to the terminal interface
+window.onerror = function(msg, url, line) {
+    const outputDiv = document.getElementById('terminal-output');
+    if (outputDiv) {
+        outputDiv.innerHTML = `SYSTEM ERROR: ${msg}\nLine: ${line}\nURL: ${url}`;
+    }
+    return false;
+};
+
 function getCharacterHex(a) {
     let hex = (a & 0xffff).toString(16);
     while (hex.length < 2) { hex = "0" + hex; }
-    return hex.length === 2 ? "\\x" + hex : "\\u" + hex;
+    return "\\x" + hex;
 }
 
 function generateChsTable(format) {
@@ -140,7 +147,6 @@ function toAdd(a, rep, chs) {
     }
 }
 
-// Core processing engine matching your audio2bOG.py logic
 async function startProcessing() {
     const fileInput = document.getElementById('audio-file');
     const outputDiv = document.getElementById('terminal-output');
@@ -150,21 +156,25 @@ async function startProcessing() {
         return;
     }
     
+    outputDiv.innerHTML = "Initializing file stream... Please wait.\n";
+    // Short forced pause to allow browser UI thread to render the initialization text
+    await new Promise(r => setTimeout(r, 50));
+    
     const file = fileInput.files[0];
     const loop = document.getElementById('loop-opt').value === 'y';
     const samplerate = parseInt(document.getElementById('sr-opt').value);
     const format = document.getElementById('format-opt').value;
     
-    outputDiv.innerHTML = "Reading file streams...\n";
-    
     try {
         const arrayBuffer = await file.arrayBuffer();
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        outputDiv.innerHTML += "Decoding MP3 natively via Browser AudioContext...\n";
+        outputDiv.innerHTML += "Decoding MP3 binary data natively...\n";
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
-        outputDiv.innerHTML += `Resampling audio to mono channel at ${samplerate}Hz (Bypassing FFmpeg)...\n`;
+        outputDiv.innerHTML += `Resampling audio data to mono at ${samplerate}Hz...\n`;
+        await new Promise(r => setTimeout(r, 50));
+        
         const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * samplerate, samplerate);
         const source = offlineCtx.createBufferSource();
         source.buffer = audioBuffer;
@@ -174,14 +184,13 @@ async function startProcessing() {
         const renderedBuffer = await offlineCtx.startRendering();
         const vals = renderedBuffer.getChannelData(0); 
         
-        outputDiv.innerHTML += `Processing ${vals.length} samples. Running script compression algorithms...\n`;
-        
         const chs = generateChsTable(format);
         let finalStr = "";
         let rep = 0;
         let bef = Math.floor(((vals[0] + 1) / 2) * 255);
         if (bef < 0) bef = 0; if (bef > 255) bef = 255;
         
+        // Loop execution
         for (let vi = 0; vi < vals.length; vi++) {
             rep += 1;
             let val = vals[vi];
@@ -194,9 +203,11 @@ async function startProcessing() {
                 rep = 0;
             }
             
+            // Pauses processing every 100k samples to draw live text updates on screen
             if (vi % 100000 === 0 || vi === vals.length - 1) {
                 let progress = ((vi / vals.length) * 100).toFixed(1);
-                outputDiv.innerHTML = `Encoding stream details...\nProcessing wave data: ${progress}% completed...`;
+                outputDiv.innerHTML = `Decoding MP3 natively via Browser AudioContext...\nResampling audio channel to ${samplerate}Hz...\n\nProcessing samples: ${vi} / ${vals.length} (${progress}%)\nRunning script compression loops...`;
+                await new Promise(r => setTimeout(r, 0)); 
             }
         }
         
@@ -210,15 +221,11 @@ async function startProcessing() {
         outputDiv.innerHTML = `Output written successfully!\n\nC:\\audio2bytebeat\\output.txt>\n\n${finalFormula}`;
         
     } catch (err) {
-        outputDiv.innerHTML = `CRITICAL ERROR: ${err.message}\nMake sure it is a valid audio file.`;
+        outputDiv.innerHTML = `CRITICAL DECODING ERROR: ${err.message}\nMake sure the file selected is a valid, uncorrupted MP3.`;
     }
 }
 
-// Click listener for the new button
 document.getElementById('run-btn').addEventListener('click', startProcessing);
-
-// Fallback listener: Automatically runs immediately if they pick a file!
-document.getElementById('audio-file').addEventListener('change', startProcessing);
 </script>
 
 </body>
