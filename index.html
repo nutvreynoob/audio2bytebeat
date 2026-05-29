@@ -12,28 +12,47 @@
             padding: 20px;
         }
         .terminal {
-            max-width: 800px;
+            max-width: 850px;
             margin: 0 auto;
         }
         .output {
             white-space: pre-wrap;
             margin-top: 15px;
             color: #00ff00;
-            background: #111;
-            padding: 10px;
+            background: #050505;
+            padding: 15px;
             border: 1px solid #222;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
+            font-family: 'Consolas', monospace;
         }
-        input, select {
+        .input-section {
+            margin: 15px 0;
+            background: #111;
+            padding: 15px;
+            border: 1px solid #333;
+        }
+        input, select, button {
             background: #1e1e1e;
             color: #fff;
-            border: 1px solid #333;
-            padding: 5px;
+            border: 1px solid #555;
+            padding: 6px;
             font-family: monospace;
             margin: 5px 0;
         }
-        label { display: inline-block; width: 180px; }
+        button {
+            background: #222;
+            color: #00ff00;
+            cursor: pointer;
+            border: 1px solid #00ff00;
+            font-weight: bold;
+            padding: 6px 15px;
+        }
+        button:hover {
+            background: #00ff00;
+            color: #000;
+        }
+        label { display: inline-block; width: 220px; color: #aaa; }
     </style>
 </head>
 <body>
@@ -42,54 +61,62 @@
     <p>Microsoft Windows [Version 10.0.19045]<br>(c) Microsoft Corporation. All rights reserved.</p>
     <p>C:\Users\GitHub\audio2bytebeat> <span style="color: #fff;">python audio2bOG.py</span></p>
     
-    <div>
+    <div class="input-section">
         <label>Select MP3 File:</label>
         <input type="file" id="audio-file" accept=".mp3"><br>
         
-        <label>Make audio loop?:</label>
-        <select id="loop-opt"><option value="y">y</option><option value="n">n</option></select><br>
+        <label>Make audio loop? (y/n):</label>
+        <select id="loop-opt">
+            <option value="y">y</option>
+            <option value="n">n</option>
+        </select><br>
         
-        <label>Sample rate (Hz):</label>
+        <label>Sample rate? (Hz):</label>
         <input type="number" id="sr-opt" value="8000"><br>
         
-        <label>Format type (f/m/s):</label>
+        <label>Format type? (f/m/s):</label>
         <select id="format-opt">
-            <option value="m">mixed (E, \x00)</option>
-            <option value="f">formatted (\x69, \x00)</option>
-            <option value="s">special (E, NUL)</option>
-        </select>
+            <option value="m">mixed - E, \x00</option>
+            <option value="f">formatted - \x69, \x00</option>
+            <option value="s">special - E, NUL</option>
+        </select><br><br>
+        
+        <button id="run-btn">CONVERT TO BYTEBEAT</button>
     </div>
     
     <hr style="border-color: #333; margin: 20px 0;">
     
     <p><strong>Terminal Output:</strong></p>
-    <div id="terminal-output" class="output">Awaiting file input...</div>
+    <div id="terminal-output" class="output">Awaiting configuration and file input...</div>
 </div>
 
 <script>
-// Porting your exact Python chs logic to JS
+// Helper to get hex string matching your Python logic
 function getCharacterHex(a) {
     let hex = (a & 0xffff).toString(16);
     while (hex.length !== 2 && hex.length !== 4) { hex = "0" + hex; }
     return hex.length === 2 ? "\\x" + hex : "\\u" + hex;
 }
 
+// Generates the characters lookup array exactly like your Python script
 function generateChsTable(format) {
     let table = [];
     for (let a = 0; a < 256; a++) {
         if (format === 'f') {
             table.push(getCharacterHex(a));
         } else if (format === 's') {
+            let c = String.fromCharCode(a);
             if (a === 92) table.push("\\\\");
             else if (a === 96) table.push("\\`");
             else if (a === 10) table.push("\\n");
             else if (a === 13) table.push("\\r");
-            else table.push(String.fromCharCode(a));
-        } else { // Mixed (Default Python logic)
+            else table.push(c);
+        } else { // 'm' - Mixed format
             if ((a > 0x1f && a < 0x7f) || (a > 0xa0)) {
+                let c = String.fromCharCode(a);
                 if (a === 92) table.push("\\\\");
                 else if (a === 96) table.push("\\`");
-                else table.push(String.fromCharCode(a));
+                else table.push(c);
             } else {
                 table.push(getCharacterHex(a));
             }
@@ -98,76 +125,79 @@ function generateChsTable(format) {
     return table;
 }
 
-document.getElementById('audio-file').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+function toAdd(a, rep, chs) {
+    let charStr = chs[a];
+    let safeChar = charStr;
+    if (charStr === "\n") safeChar = "\\n";
+    if (charStr === "\x0d") safeChar = "\\r";
+    
+    let repStr = `\${r(\`${safeChar}\`,${rep})}`;
+    if (rep === 1 || repStr.length > charStr.length * rep) {
+        return charStr.repeat(rep);
+    } else {
+        return repStr;
+    }
+}
 
+document.getElementById('run-btn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('audio-file');
     const outputDiv = document.getElementById('terminal-output');
-    outputDiv.innerHTML = "Initializing AudioContext... Decoding MP3 natively...\n";
-
-    // Setup options from HTML inputs
+    
+    if (fileInput.files.length === 0) {
+        outputDiv.innerHTML = "ERROR: Please select an MP3 file first.";
+        return;
+    }
+    
+    const file = fileInput.files[0];
     const loop = document.getElementById('loop-opt').value === 'y';
-    const targetSampleRate = parseInt(document.getElementById('sr-opt').value);
+    const samplerate = parseInt(document.getElementById('sr-opt').value);
     const format = document.getElementById('format-opt').value;
-    const chs = generateChsTable(format);
-
+    
+    outputDiv.innerHTML = "Reading file channels...\n";
+    
     try {
-        // Read file and decode using browser native AudioContext (Replaces FFmpeg!)
         const arrayBuffer = await file.arrayBuffer();
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        outputDiv.innerHTML += "Decoding MP3 natively via Browser AudioContext...\n";
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
-        // Downsample logic (Replaces FFmpeg sample rate conversion)
-        const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
-        const bufferSource = offlineCtx.createBufferSource();
-        bufferSource.buffer = audioBuffer;
-        bufferSource.connect(offlineCtx.destination);
-        bufferSource.start();
+        outputDiv.innerHTML += `Resampling audio to mono channel at ${samplerate}Hz (Replacing FFmpeg)...\n`;
+        // Use an OfflineAudioContext to downsample the audio perfectly to the target sample rate
+        const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * samplerate, samplerate);
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(offlineCtx.destination);
+        source.start();
         
-        outputDiv.innerHTML += "Downsampling audio to " + targetSampleRate + "Hz...\n";
         const renderedBuffer = await offlineCtx.startRendering();
-        const vals = renderedBuffer.getChannelData(0); // This is your raw audio array
-
-        outputDiv.innerHTML += "Compressing samples into Bytebeat formula...\n";
+        const vals = renderedBuffer.getChannelData(0); // Raw audio wave array [-1.0 to 1.0]
         
+        outputDiv.innerHTML += `Processing ${vals.length} samples. Compressing wave data...\n`;
+        
+        const chs = generateChsTable(format);
         let finalStr = "";
         let rep = 0;
-        // Normalize float [-1, 1] to byte [0, 255]
         let bef = Math.floor(((vals[0] + 1) / 2) * 255);
-
+        if (bef < 0) bef = 0; if (bef > 255) bef = 255;
+        
         for (let vi = 0; vi < vals.length; vi++) {
-            rep++;
+            rep += 1;
             let val = vals[vi];
             let v = Math.floor(((val + 1) / 2) * 255);
             if (v < 0) v = 0; if (v > 255) v = 255;
-
+            
             if (bef !== v) {
-                // toAdd conversion
-                let charStr = chs[bef];
-                let repStr = `\${r(\`${charStr === '\n' ? '\\n' : charStr === '\r' ? '\\r' : charStr}\`,${rep})}`;
-                
-                if (rep === 1 || repStr.length > charStr.length * rep) {
-                    finalStr += charStr.repeat(rep);
-                } else {
-                    finalStr += repStr;
-                }
-                
+                finalStr += toAdd(v, rep, chs);
                 bef = v;
                 rep = 0;
             }
+            
+            // Periodically print progress status text
+            if (vi % 50000 === 0 || vi === vals.length - 1) {
+                let progress = ((vi / vals.length) * 100).toFixed(2);
+                outputDiv.innerHTML = `Decoding MP3 natively via Browser AudioContext...\nResampling audio to mono channel at ${samplerate}Hz (Replacing FFmpeg)...\nProcessing samples: ${progress}% completed...`;
+            }
         }
-
-        // Wrap into final Bytebeat boilerplate
-        let finalFormula = "";
-        if (loop) {
-            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=((a.charCodeAt((t*${targetSampleRate})%a.length)/(255/2)-1)-z)/Math.max(sr/${targetSampleRate},1);if(!z){z=0};return z})`;
-        } else {
-            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=(((t*${targetSampleRate}<a.length?a.charCodeAt(t*${targetSampleRate})/(255/2)-1:0))-z)/Math.max(sr/${targetSampleRate},1);if(!z){z=0};return z})`;
-        }
-
-        outputDiv.innerHTML = `C:\\audio2bytebeat\\output.txt>\n\n${finalFormula}`;
         
-    </div>
-</div>
-</body>
-</html>
+        // Final wrapping structure based on loop option
