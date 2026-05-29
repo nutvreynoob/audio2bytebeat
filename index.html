@@ -56,7 +56,7 @@
             background: #00ff00;
             color: #000;
         }
-        /* Styling for the copy button when active or clicked */
+        /* Style for the copy button */
         #copy-btn {
             color: #00bcff;
             border-color: #00bcff;
@@ -105,8 +105,7 @@
 </div>
 
 <script>
-// Global variable to store just the formula payload for accurate clipboard copies
-let currentFormulaPayload = "";
+let currentFormulaPayload = ""; // Stores pure formula text string safely
 
 window.onerror = function(msg, url, line) {
     const outputDiv = document.getElementById('terminal-output');
@@ -203,4 +202,60 @@ async function startProcessing() {
         let finalStr = "";
         let rep = 0;
         let bef = Math.floor(((vals[0] + 1) / 2) * 255);
-        if (bef
+        if (bef < 0) bef = 0; if (bef > 255) bef = 255;
+        
+        for (let vi = 0; vi < vals.length; vi++) {
+            rep += 1;
+            let val = vals[vi];
+            let v = Math.floor(((val + 1) / 2) * 255);
+            if (v < 0) v = 0; if (v > 255) v = 255;
+            
+            if (bef !== v) {
+                finalStr += toAdd(v, rep, chs);
+                bef = v;
+                rep = 0;
+            }
+            
+            if (vi % 100000 === 0 || vi === vals.length - 1) {
+                let progress = ((vi / vals.length) * 100).toFixed(1);
+                outputDiv.innerHTML = `Decoding MP3 natively via Browser AudioContext...\nResampling audio channel to ${samplerate}Hz...\n\nProcessing samples: ${vi} / ${vals.length} (${progress}%)\nRunning script compression loops...`;
+                await new Promise(r => setTimeout(r, 0)); 
+            }
+        }
+        
+        if (loop) {
+            currentFormulaPayload = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=((a.charCodeAt((t*${samplerate})%a.length)/(255/2)-1)-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
+        } else {
+            currentFormulaPayload = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=(((t*${samplerate}<a.length?a.charCodeAt(t*${samplerate})/(255/2)-1:0))-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
+        }
+        
+        outputDiv.innerHTML = `Output written successfully!\n\nC:\\audio2bytebeat\\output.txt>\n\n${currentFormulaPayload}`;
+        
+    } catch (err) {
+        outputDiv.innerHTML = `CRITICAL DECODING ERROR: ${err.message}\nMake sure the file selected is a valid, uncorrupted MP3.`;
+    }
+}
+
+// Clipboard copier engine
+document.getElementById('copy-btn').addEventListener('click', function() {
+    const copyBtn = this;
+    if (!currentFormulaPayload) {
+        alert("No code generated yet! Drop an MP3 file and press convert first.");
+        return;
+    }
+    
+    navigator.clipboard.writeText(currentFormulaPayload).then(() => {
+        copyBtn.innerText = "COPIED!";
+        setTimeout(() => {
+            copyBtn.innerText = "COPY CODE";
+        }, 2000);
+    }).catch(err => {
+        alert("Clipboard permission denied: " + err);
+    });
+});
+
+document.getElementById('run-btn').addEventListener('click', startProcessing);
+</script>
+
+</body>
+</html>
