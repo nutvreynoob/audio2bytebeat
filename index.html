@@ -9,7 +9,6 @@
     <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
 
     <style>
-        /* This makes the page look like a Windows CMD Terminal */
         body {
             background-color: #0c0c0c;
             color: #cccccc;
@@ -22,8 +21,8 @@
         }
         .output {
             white-space: pre-wrap;
-            margin-bottom: 20px;
-            color: #00ff00; /* Classic Matrix Green text */
+            margin-top: 15px;
+            color: #00ff00;
         }
         input[type="file"] {
             background: #1e1e1e;
@@ -31,6 +30,7 @@
             border: 1px solid #333;
             padding: 5px;
             font-family: monospace;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -52,7 +52,7 @@
 <script type="py" config='{"files": ["audio2bOG.py"]}'>
     from js import document
     from pyodide.ffi import create_proxy
-    import audio2bOG # Imports your script!
+    import audio2bOG 
 
     async def process_file(event):
         output_div = document.getElementById("terminal-output")
@@ -63,20 +63,16 @@
             return
             
         file = file_list.item(0)
-        
-        # Read file data into Python
         array_buffer = await file.arrayBuffer()
         file_bytes = array_buffer.to_bytes()
         
         try:
-            # Mandate your python script conversion logic here
-            # e.g., result = audio2bOG.your_convert_function(file_bytes)
-            result = "Success! (Hook your audio2bOG.py function logic here)"
+            # ⚠️ NOTE: Change 'convert' to whatever function name is inside your audio2bOG.py script!
+            result = audio2bOG.convert(file_bytes) 
             output_div.innerHTML = f"C:\\audio2bytebeat\\output>\n\n{result}"
         except Exception as e:
             output_div.innerHTML = f"ERROR: {str(e)}"
 
-    # Bind the file upload event to our Python function
     file_input = document.getElementById("audio-file")
     file_input.addEventListener("change", create_proxy(process_file))
 </script>
