@@ -105,7 +105,7 @@
 </div>
 
 <script>
-let currentFormulaPayload = ""; // Stores pure formula text string safely
+let currentFormulaPayload = ""; // Holds formula securely
 
 window.onerror = function(msg, url, line) {
     const outputDiv = document.getElementById('terminal-output');
@@ -164,13 +164,13 @@ async function startProcessing() {
     const outputDiv = document.getElementById('terminal-output');
     const copyBtn = document.getElementById('copy-btn');
     
-    if (fileInput.files.length === 0) {
-        outputDiv.innerHTML = "ERROR: Please select an MP3 file first.";
+    if (!fileInput || fileInput.files.length === 0) {
+        if (outputDiv) outputDiv.innerHTML = "ERROR: Please select an MP3 file first.";
         return;
     }
     
-    outputDiv.innerHTML = "Initializing file stream... Please wait.\n";
-    copyBtn.innerText = "COPY CODE";
+    if (outputDiv) outputDiv.innerHTML = "Initializing file stream... Please wait.\n";
+    if (copyBtn) copyBtn.innerText = "COPY CODE";
     currentFormulaPayload = ""; 
     await new Promise(r => setTimeout(r, 50));
     
@@ -183,10 +183,10 @@ async function startProcessing() {
         const arrayBuffer = await file.arrayBuffer();
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        outputDiv.innerHTML += "Decoding MP3 binary data natively...\n";
+        if (outputDiv) outputDiv.innerHTML += "Decoding MP3 binary data natively...\n";
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
-        outputDiv.innerHTML += `Resampling audio data to mono at ${samplerate}Hz...\n`;
+        if (outputDiv) outputDiv.innerHTML += `Resampling audio data to mono at ${samplerate}Hz...\n`;
         await new Promise(r => setTimeout(r, 50));
         
         const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * samplerate, samplerate);
@@ -216,7 +216,7 @@ async function startProcessing() {
                 rep = 0;
             }
             
-            if (vi % 100000 === 0 || vi === vals.length - 1) {
+            if (outputDiv && (vi % 100000 === 0 || vi === vals.length - 1)) {
                 let progress = ((vi / vals.length) * 100).toFixed(1);
                 outputDiv.innerHTML = `Decoding MP3 natively via Browser AudioContext...\nResampling audio channel to ${samplerate}Hz...\n\nProcessing samples: ${vi} / ${vals.length} (${progress}%)\nRunning script compression loops...`;
                 await new Promise(r => setTimeout(r, 0)); 
@@ -226,35 +226,40 @@ async function startProcessing() {
         if (loop) {
             currentFormulaPayload = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=((a.charCodeAt((t*${samplerate})%a.length)/(255/2)-1)-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
         } else {
-            currentFormulaPayload = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=(((t*${samplerate}<a.length?a.charCodeAt(t*${samplerate})/(255/2)-1:0))-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
+            currentFormulaPayload = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`\r;return ((t,sr)=>{z+=(((t*${samplerate}<a.length?a.charCodeAt(t*${samplerate})/(255/2)-1:0))-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
         }
         
-        outputDiv.innerHTML = `Output written successfully!\n\nC:\\audio2bytebeat\\output.txt>\n\n${currentFormulaPayload}`;
+        if (outputDiv) outputDiv.innerHTML = `Output written successfully!\n\nC:\\audio2bytebeat\\output.txt>\n\n${currentFormulaPayload}`;
         
     } catch (err) {
-        outputDiv.innerHTML = `CRITICAL DECODING ERROR: ${err.message}\nMake sure the file selected is a valid, uncorrupted MP3.`;
+        if (outputDiv) outputDiv.innerHTML = `CRITICAL DECODING ERROR: ${err.message}\nMake sure the file selected is a valid, uncorrupted MP3.`;
     }
 }
 
-// Clipboard copier engine
-document.getElementById('copy-btn').addEventListener('click', function() {
-    const copyBtn = this;
-    if (!currentFormulaPayload) {
-        alert("No code generated yet! Drop an MP3 file and press convert first.");
-        return;
-    }
-    
-    navigator.clipboard.writeText(currentFormulaPayload).then(() => {
-        copyBtn.innerText = "COPIED!";
-        setTimeout(() => {
-            copyBtn.innerText = "COPY CODE";
-        }, 2000);
-    }).catch(err => {
-        alert("Clipboard permission denied: " + err);
-    });
-});
+// Safer Event Registration Engine
+const runBtn = document.getElementById('run-btn');
+if (runBtn) {
+    runBtn.addEventListener('click', startProcessing);
+}
 
-document.getElementById('run-btn').addEventListener('click', startProcessing);
+const copyBtn = document.getElementById('copy-btn');
+if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+        if (!currentFormulaPayload) {
+            alert("No code generated yet! Drop an MP3 file and press convert first.");
+            return;
+        }
+        
+        navigator.clipboard.writeText(currentFormulaPayload).then(() => {
+            copyBtn.innerText = "COPIED!";
+            setTimeout(() => {
+                copyBtn.innerText = "COPY CODE";
+            }, 2000);
+        }).catch(err => {
+            alert("Clipboard configuration error: " + err);
+        });
+    });
+}
 </script>
 
 </body>
