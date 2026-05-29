@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>audio2bytebeat CMD</title>
+    
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+
+    <style>
+        /* This makes the page look like a Windows CMD Terminal */
+        body {
+            background-color: #0c0c0c;
+            color: #cccccc;
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 20px;
+        }
+        .terminal {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .output {
+            white-space: pre-wrap;
+            margin-bottom: 20px;
+            color: #00ff00; /* Classic Matrix Green text */
+        }
+        input[type="file"] {
+            background: #1e1e1e;
+            color: #fff;
+            border: 1px solid #333;
+            padding: 5px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+<div class="terminal">
+    <p>Microsoft Windows [Version 10.0.19045]<br>(c) Microsoft Corporation. All rights reserved.</p>
+    <p>C:\Users\GitHub\audio2bytebeat> <span style="color: #fff;">python audio2bOG.py</span></p>
+    
+    <p>Select MP3 File to convert:</p>
+    <input type="file" id="audio-file" accept=".mp3">
+    
+    <hr style="border-color: #333; margin: 20px 0;">
+    
+    <p><strong>Terminal Output:</strong></p>
+    <div id="terminal-output" class="output">Awaiting file input...</div>
+</div>
+
+<script type="py" config='{"files": ["audio2bOG.py"]}'>
+    from js import document
+    from pyodide.ffi import create_proxy
+    import audio2bOG # Imports your script!
+
+    async def process_file(event):
+        output_div = document.getElementById("terminal-output")
+        output_div.innerHTML = "Processing MP3 into Bytebeat... Please wait...\n"
+        
+        file_list = event.target.files
+        if len(file_list) == 0:
+            return
+            
+        file = file_list.item(0)
+        
+        # Read file data into Python
+        array_buffer = await file.arrayBuffer()
+        file_bytes = array_buffer.to_bytes()
+        
+        try:
+            # Mandate your python script conversion logic here
+            # e.g., result = audio2bOG.your_convert_function(file_bytes)
+            result = "Success! (Hook your audio2bOG.py function logic here)"
+            output_div.innerHTML = f"C:\\audio2bytebeat\\output>\n\n{result}"
+        except Exception as e:
+            output_div.innerHTML = f"ERROR: {str(e)}"
+
+    # Bind the file upload event to our Python function
+    file_input = document.getElementById("audio-file")
+    file_input.addEventListener("change", create_proxy(process_file))
+</script>
+
+</body>
+</html>
