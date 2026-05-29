@@ -40,7 +40,7 @@
             font-family: monospace;
             margin: 5px 0;
         }
-        #run-btn {
+        .btn {
             background: #111;
             color: #00ff00;
             cursor: pointer;
@@ -49,10 +49,20 @@
             padding: 8px 20px;
             font-family: 'Consolas', monospace;
             margin-top: 15px;
+            margin-right: 10px;
             display: inline-block;
         }
-        #run-btn:hover {
+        .btn:hover {
             background: #00ff00;
+            color: #000;
+        }
+        /* Styling for the copy button when active or clicked */
+        #copy-btn {
+            color: #00bcff;
+            border-color: #00bcff;
+        }
+        #copy-btn:hover {
+            background: #00bcff;
             color: #000;
         }
         label { display: inline-block; width: 220px; color: #aaa; }
@@ -84,7 +94,8 @@
             <option value="s">special   - E, NUL</option>
         </select><br>
         
-        <button id="run-btn">CONVERT TO BYTEBEAT</button>
+        <button id="run-btn" class="btn">CONVERT TO BYTEBEAT</button>
+        <button id="copy-btn" class="btn">COPY CODE</button>
     </div>
     
     <hr style="border-color: #333; margin: 20px 0;">
@@ -94,7 +105,9 @@
 </div>
 
 <script>
-// Global Error Catcher - Prints any hidden browser crashes directly to the terminal interface
+// Global variable to store just the formula payload for accurate clipboard copies
+let currentFormulaPayload = "";
+
 window.onerror = function(msg, url, line) {
     const outputDiv = document.getElementById('terminal-output');
     if (outputDiv) {
@@ -150,6 +163,7 @@ function toAdd(a, rep, chs) {
 async function startProcessing() {
     const fileInput = document.getElementById('audio-file');
     const outputDiv = document.getElementById('terminal-output');
+    const copyBtn = document.getElementById('copy-btn');
     
     if (fileInput.files.length === 0) {
         outputDiv.innerHTML = "ERROR: Please select an MP3 file first.";
@@ -157,7 +171,8 @@ async function startProcessing() {
     }
     
     outputDiv.innerHTML = "Initializing file stream... Please wait.\n";
-    // Short forced pause to allow browser UI thread to render the initialization text
+    copyBtn.innerText = "COPY CODE";
+    currentFormulaPayload = ""; 
     await new Promise(r => setTimeout(r, 50));
     
     const file = fileInput.files[0];
@@ -188,45 +203,4 @@ async function startProcessing() {
         let finalStr = "";
         let rep = 0;
         let bef = Math.floor(((vals[0] + 1) / 2) * 255);
-        if (bef < 0) bef = 0; if (bef > 255) bef = 255;
-        
-        // Loop execution
-        for (let vi = 0; vi < vals.length; vi++) {
-            rep += 1;
-            let val = vals[vi];
-            let v = Math.floor(((val + 1) / 2) * 255);
-            if (v < 0) v = 0; if (v > 255) v = 255;
-            
-            if (bef !== v) {
-                finalStr += toAdd(v, rep, chs);
-                bef = v;
-                rep = 0;
-            }
-            
-            // Pauses processing every 100k samples to draw live text updates on screen
-            if (vi % 100000 === 0 || vi === vals.length - 1) {
-                let progress = ((vi / vals.length) * 100).toFixed(1);
-                outputDiv.innerHTML = `Decoding MP3 natively via Browser AudioContext...\nResampling audio channel to ${samplerate}Hz...\n\nProcessing samples: ${vi} / ${vals.length} (${progress}%)\nRunning script compression loops...`;
-                await new Promise(r => setTimeout(r, 0)); 
-            }
-        }
-        
-        let finalFormula = "";
-        if (loop) {
-            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=((a.charCodeAt((t*${samplerate})%a.length)/(255/2)-1)-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
-        } else {
-            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=(((t*${samplerate}<a.length?a.charCodeAt(t*${samplerate})/(255/2)-1:0))-z)/Math.max(sr/${samplerate},1);if(!z){z=0};return z})`;
-        }
-        
-        outputDiv.innerHTML = `Output written successfully!\n\nC:\\audio2bytebeat\\output.txt>\n\n${finalFormula}`;
-        
-    } catch (err) {
-        outputDiv.innerHTML = `CRITICAL DECODING ERROR: ${err.message}\nMake sure the file selected is a valid, uncorrupted MP3.`;
-    }
-}
-
-document.getElementById('run-btn').addEventListener('click', startProcessing);
-</script>
-
-</body>
-</html>
+        if (bef
