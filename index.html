@@ -4,10 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>audio2bytebeat CMD</title>
-    
-    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
-    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
-
     <style>
         body {
             background-color: #0c0c0c;
@@ -23,15 +19,21 @@
             white-space: pre-wrap;
             margin-top: 15px;
             color: #00ff00;
+            background: #111;
+            padding: 10px;
+            border: 1px solid #222;
+            max-height: 300px;
+            overflow-y: auto;
         }
-        input[type="file"] {
+        input, select {
             background: #1e1e1e;
             color: #fff;
             border: 1px solid #333;
             padding: 5px;
             font-family: monospace;
-            margin-top: 10px;
+            margin: 5px 0;
         }
+        label { display: inline-block; width: 180px; }
     </style>
 </head>
 <body>
@@ -40,8 +42,23 @@
     <p>Microsoft Windows [Version 10.0.19045]<br>(c) Microsoft Corporation. All rights reserved.</p>
     <p>C:\Users\GitHub\audio2bytebeat> <span style="color: #fff;">python audio2bOG.py</span></p>
     
-    <p>Select MP3 File to convert:</p>
-    <input type="file" id="audio-file" accept=".mp3">
+    <div>
+        <label>Select MP3 File:</label>
+        <input type="file" id="audio-file" accept=".mp3"><br>
+        
+        <label>Make audio loop?:</label>
+        <select id="loop-opt"><option value="y">y</option><option value="n">n</option></select><br>
+        
+        <label>Sample rate (Hz):</label>
+        <input type="number" id="sr-opt" value="8000"><br>
+        
+        <label>Format type (f/m/s):</label>
+        <select id="format-opt">
+            <option value="m">mixed (E, \x00)</option>
+            <option value="f">formatted (\x69, \x00)</option>
+            <option value="s">special (E, NUL)</option>
+        </select>
+    </div>
     
     <hr style="border-color: #333; margin: 20px 0;">
     
@@ -49,33 +66,108 @@
     <div id="terminal-output" class="output">Awaiting file input...</div>
 </div>
 
-<script type="py" config='{"files": ["audio2bOG.py"]}'>
-    from js import document
-    from pyodide.ffi import create_proxy
-    import audio2bOG 
+<script>
+// Porting your exact Python chs logic to JS
+function getCharacterHex(a) {
+    let hex = (a & 0xffff).toString(16);
+    while (hex.length !== 2 && hex.length !== 4) { hex = "0" + hex; }
+    return hex.length === 2 ? "\\x" + hex : "\\u" + hex;
+}
 
-    async def process_file(event):
-        output_div = document.getElementById("terminal-output")
-        output_div.innerHTML = "Processing MP3 into Bytebeat... Please wait...\n"
+function generateChsTable(format) {
+    let table = [];
+    for (let a = 0; a < 256; a++) {
+        if (format === 'f') {
+            table.push(getCharacterHex(a));
+        } else if (format === 's') {
+            if (a === 92) table.push("\\\\");
+            else if (a === 96) table.push("\\`");
+            else if (a === 10) table.push("\\n");
+            else if (a === 13) table.push("\\r");
+            else table.push(String.fromCharCode(a));
+        } else { // Mixed (Default Python logic)
+            if ((a > 0x1f && a < 0x7f) || (a > 0xa0)) {
+                if (a === 92) table.push("\\\\");
+                else if (a === 96) table.push("\\`");
+                else table.push(String.fromCharCode(a));
+            } else {
+                table.push(getCharacterHex(a));
+            }
+        }
+    }
+    return table;
+}
+
+document.getElementById('audio-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const outputDiv = document.getElementById('terminal-output');
+    outputDiv.innerHTML = "Initializing AudioContext... Decoding MP3 natively...\n";
+
+    // Setup options from HTML inputs
+    const loop = document.getElementById('loop-opt').value === 'y';
+    const targetSampleRate = parseInt(document.getElementById('sr-opt').value);
+    const format = document.getElementById('format-opt').value;
+    const chs = generateChsTable(format);
+
+    try {
+        // Read file and decode using browser native AudioContext (Replaces FFmpeg!)
+        const arrayBuffer = await file.arrayBuffer();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         
-        file_list = event.target.files
-        if len(file_list) == 0:
-            return
-            
-        file = file_list.item(0)
-        array_buffer = await file.arrayBuffer()
-        file_bytes = array_buffer.to_bytes()
+        // Downsample logic (Replaces FFmpeg sample rate conversion)
+        const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
+        const bufferSource = offlineCtx.createBufferSource();
+        bufferSource.buffer = audioBuffer;
+        bufferSource.connect(offlineCtx.destination);
+        bufferSource.start();
         
-        try:
-            # ⚠️ NOTE: Change 'convert' to whatever function name is inside your audio2bOG.py script!
-            result = audio2bOG.convert(file_bytes) 
-            output_div.innerHTML = f"C:\\audio2bytebeat\\output>\n\n{result}"
-        except Exception as e:
-            output_div.innerHTML = f"ERROR: {str(e)}"
+        outputDiv.innerHTML += "Downsampling audio to " + targetSampleRate + "Hz...\n";
+        const renderedBuffer = await offlineCtx.startRendering();
+        const vals = renderedBuffer.getChannelData(0); // This is your raw audio array
 
-    file_input = document.getElementById("audio-file")
-    file_input.addEventListener("change", create_proxy(process_file))
-</script>
+        outputDiv.innerHTML += "Compressing samples into Bytebeat formula...\n";
+        
+        let finalStr = "";
+        let rep = 0;
+        // Normalize float [-1, 1] to byte [0, 255]
+        let bef = Math.floor(((vals[0] + 1) / 2) * 255);
 
+        for (let vi = 0; vi < vals.length; vi++) {
+            rep++;
+            let val = vals[vi];
+            let v = Math.floor(((val + 1) / 2) * 255);
+            if (v < 0) v = 0; if (v > 255) v = 255;
+
+            if (bef !== v) {
+                // toAdd conversion
+                let charStr = chs[bef];
+                let repStr = `\${r(\`${charStr === '\n' ? '\\n' : charStr === '\r' ? '\\r' : charStr}\`,${rep})}`;
+                
+                if (rep === 1 || repStr.length > charStr.length * rep) {
+                    finalStr += charStr.repeat(rep);
+                } else {
+                    finalStr += repStr;
+                }
+                
+                bef = v;
+                rep = 0;
+            }
+        }
+
+        // Wrap into final Bytebeat boilerplate
+        let finalFormula = "";
+        if (loop) {
+            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=((a.charCodeAt((t*${targetSampleRate})%a.length)/(255/2)-1)-z)/Math.max(sr/${targetSampleRate},1);if(!z){z=0};return z})`;
+        } else {
+            finalFormula = `z=0,r=(b,c)=>b.repeat(c),a=\`${finalStr}\`;return ((t,sr)=>{z+=(((t*${targetSampleRate}<a.length?a.charCodeAt(t*${targetSampleRate})/(255/2)-1:0))-z)/Math.max(sr/${targetSampleRate},1);if(!z){z=0};return z})`;
+        }
+
+        outputDiv.innerHTML = `C:\\audio2bytebeat\\output.txt>\n\n${finalFormula}`;
+        
+    </div>
+</div>
 </body>
 </html>
